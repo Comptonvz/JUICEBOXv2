@@ -1,15 +1,23 @@
 const express = require("express");
 const usersRouter = express.Router();
-const { getAllUsers, getUserByUsername } = require("../db");
 
-usersRouter.use((req, res, next) => {
-  console.log("A request is being made to /users");
+const { createUser, getAllUsers, getUserByUsername } = require("../db");
 
-  next(); // THIS IS DIFFERENT
+const jwt = require("jsonwebtoken");
+
+usersRouter.get("/", async (req, res, next) => {
+  try {
+    const users = await getAllUsers();
+
+    res.send({
+      users,
+    });
+  } catch ({ name, message }) {
+    next({ name, message });
+  }
 });
 
 usersRouter.post("/login", async (req, res, next) => {
-  ///MIGHT HAVE TO FIX AND CHANGE SOMETHING MINOR
   const { username, password } = req.body;
 
   // request must have both
@@ -24,8 +32,21 @@ usersRouter.post("/login", async (req, res, next) => {
     const user = await getUserByUsername(username);
 
     if (user && user.password == password) {
-      // create token & return to user
-      res.send({ message: "you're logged in!" }); // toekn tokenfix later
+      const token = jwt.sign(
+        {
+          id: user.id,
+          username,
+        },
+        process.env.JWT_SECRET,
+        {
+          expiresIn: "1w",
+        }
+      );
+
+      res.send({
+        message: "you're logged in!",
+        token,
+      });
     } else {
       next({
         name: "IncorrectCredentialsError",
@@ -38,11 +59,44 @@ usersRouter.post("/login", async (req, res, next) => {
   }
 });
 
-usersRouter.get("/", async (req, res) => {
-  const users = await getAllUsers();
-  res.send({
-    users,
-  });
+usersRouter.post("/register", async (req, res, next) => {
+  const { username, password, name, location } = req.body;
+
+  try {
+    const _user = await getUserByUsername(username);
+
+    if (_user) {
+      next({
+        name: "UserExistsError",
+        message: "A user by that username already exists",
+      });
+    }
+
+    const user = await createUser({
+      username,
+      password,
+      name,
+      location,
+    });
+
+    const token = jwt.sign(
+      {
+        id: user.id,
+        username,
+      },
+      process.env.JWT_SECRET,
+      {
+        expiresIn: "1w",
+      }
+    );
+
+    res.send({
+      message: "thank you for signing up",
+      token,
+    });
+  } catch ({ name, message }) {
+    next({ name, message });
+  }
 });
 
 module.exports = usersRouter;
